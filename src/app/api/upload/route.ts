@@ -37,7 +37,9 @@ async function uploadToGitHub({ code, difficulty, topic, name, leetcodeNumber, e
 
     // Format topic path (replace spaces with underscores and capitalize)
     const formattedTopic = topic
-      .split(' ')
+      .toLowerCase()
+      .replace(/ /g, '_') // Replace all spaces with underscores
+      .split('_')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join('_');
     const topicFilePath = `Topics/${formattedTopic}/${fileName}`;
