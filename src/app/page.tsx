@@ -21,6 +21,7 @@ const LeetCodeUploadForm = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     document.body.classList.add('dark');
@@ -41,6 +42,8 @@ const LeetCodeUploadForm = () => {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
 
     if (!difficulty || !topic || !code || !name || !leetcodeNumber) {
       setErrorMessage('Please fill all required fields.');
@@ -65,8 +68,13 @@ const LeetCodeUploadForm = () => {
 
       const result = await response.json();
       if (response.ok) {
-        setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        setSuccessMessage(result.message || 'Solution uploaded successfully!');
+        setCode('');
+        setName('');
+        setLeetCodeNumber('');
+        setTimeout(() => {
+          setSuccessMessage('');
+        }, 5000);
       } else {
         setErrorMessage(result.error || 'Error uploading solution');
       }
@@ -203,15 +211,21 @@ const LeetCodeUploadForm = () => {
                 </SelectContent>
               </Select>
             </div>
-            {errorMessage && <div className="text-red-600 mt-2">{errorMessage}</div>}
+            {errorMessage && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertDescription>{errorMessage}</AlertDescription>
+              </Alert>
+            )}
+            
+            {successMessage && (
+              <Alert className="mt-4 bg-green-50 dark:bg-green-900/20 border-green-500/50 text-green-700 dark:text-green-300">
+                <AlertDescription>{successMessage}</AlertDescription>
+              </Alert>
+            )}
+
             <Button type="submit" className="w-full" disabled={isSubmitDisabled}>
               Upload Solution
             </Button>
-            {showSuccess && (
-              <Alert className="mt-4">
-                <AlertDescription>Solution uploaded successfully!</AlertDescription>
-              </Alert>
-            )}
           </form>
         </CardContent>
       </Card>
