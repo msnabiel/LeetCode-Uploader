@@ -10,7 +10,7 @@ interface UploadData {
   extension: string;
 }
 
-const token = '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'; // GitHub Authentication token
+const token = process.env.GITHUB_TOKEN; // Access environment variable // GitHub Authentication token
 
 // Instantiate Octokit with authentication token
 const octokit = new Octokit({ auth: token });
