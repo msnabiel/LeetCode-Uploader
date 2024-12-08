@@ -8,17 +8,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
 import { Alert, AlertDescription } from '../components/ui/alert';
-import { Upload } from 'lucide-react';
+import { Upload, Check } from 'lucide-react';
 import { Switch } from '../components/ui/switch';
 
 const LeetCodeUploadForm = () => {
   const [code, setCode] = useState('');
   const [difficulty, setDifficulty] = useState('');
-  const [topic, setTopic] = useState('');
+  const [topics, setTopics] = useState<string[]>([]);
   const [language, setLanguage] = useState('python');
   const [name, setName] = useState('');
   const [leetcodeNumber, setLeetCodeNumber] = useState('');
-  const [showSuccess, setShowSuccess] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -45,7 +44,7 @@ const LeetCodeUploadForm = () => {
     setErrorMessage('');
     setSuccessMessage('');
 
-    if (!difficulty || !topic || !code || !name || !leetcodeNumber) {
+    if (!difficulty || topics.length === 0 || !code || !name || !leetcodeNumber) {
       setErrorMessage('Please fill all required fields.');
       return;
     }
@@ -59,7 +58,7 @@ const LeetCodeUploadForm = () => {
         body: JSON.stringify({
           code,
           difficulty,
-          topic,
+          topics,
           name,
           leetcodeNumber,
           extension: getFileExtension(),
@@ -106,7 +105,16 @@ const LeetCodeUploadForm = () => {
     }
   };
 
-  const isSubmitDisabled = !name || !leetcodeNumber || !difficulty || !topic || !language;
+  const handleTopicChange = (value: string) => {
+    setTopics(prev => {
+      if (prev.includes(value)) {
+        return prev.filter(t => t !== value);
+      }
+      return [...prev, value];
+    });
+  };
+
+  const isSubmitDisabled = !name || !leetcodeNumber || !difficulty || topics.length === 0 || !language;
 
   return (
     <div className="flex justify-center items-center min-h-screen p-4">
@@ -183,19 +191,29 @@ const LeetCodeUploadForm = () => {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="topic">Topic</Label>
-              <Select value={topic} onValueChange={setTopic} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select topic" />
-                </SelectTrigger>
-                <SelectContent>
-                  {["Arrays", "Strings", "Dynamic Programming", "Backtracking", "Bit Manipulation", "Greedy", "Graphs", "Trees", "Math", "Hash Table", "Sorting", "Searching", "Two_Pointers", "Sliding Window", "Union Find", "Heap", "Stack", "Queue", "Recursion", "Binary Search", "Trie", "Divide and Conquer", "Monotonic_Stack"].map((topicValue) => (
-                    <SelectItem key={topicValue} value={topicValue.toLowerCase().replace(/_/g, ' ')}>
-                      {topicValue}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="topic">Topics (Select multiple)</Label>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {["Arrays", "Strings", "Dynamic Programming", "Backtracking", "Bit Manipulation", 
+                  "Greedy", "Graphs", "Trees", "Math", "Hash Table", "Sorting", "Searching", 
+                  "Two_Pointers", "Sliding Window", "Union Find", "Heap", "Stack", "Queue", 
+                  "Recursion", "Binary Search", "Trie", "Divide and Conquer", "Monotonic_Stack"
+                ].map((topicValue) => (
+                  <div
+                    key={topicValue}
+                    className={`p-2 rounded-md border cursor-pointer flex items-center justify-between ${
+                      topics.includes(topicValue.toLowerCase().replace(/_/g, ' '))
+                        ? 'bg-primary/10 border-primary'
+                        : 'border-input'
+                    }`}
+                    onClick={() => handleTopicChange(topicValue.toLowerCase().replace(/_/g, ' '))}
+                  >
+                    <span>{topicValue.replace(/_/g, ' ')}</span>
+                    {topics.includes(topicValue.toLowerCase().replace(/_/g, ' ')) && (
+                      <Check className="h-4 w-4 text-primary" />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="language">Programming Language</Label>
