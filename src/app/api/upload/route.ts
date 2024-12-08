@@ -4,13 +4,13 @@ import { NextResponse } from 'next/server';
 interface UploadData {
   code: string;
   difficulty: string;
-  topic: string;
+  topics: string[];
   name: string;
   leetcodeNumber: string;
   extension: string;
 }
 
-const token = process.env.GITHUB_TOKEN || ''; // GitHub Authentication token
+const token = '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'; // GitHub Authentication token
 
 // Instantiate Octokit with authentication token
 const octokit = new Octokit({ auth: token });
@@ -27,7 +27,7 @@ interface FileContent {
 }
 
 // Function to upload the solution to GitHub
-async function uploadToGitHub({ code, difficulty, topic, name, leetcodeNumber, extension }: UploadData) {
+async function uploadToGitHub({ code, difficulty, topics, name, leetcodeNumber, extension }: UploadData) {
   try {
     const fileName = `${leetcodeNumber}-${name}${extension}`;
     
@@ -35,25 +35,30 @@ async function uploadToGitHub({ code, difficulty, topic, name, leetcodeNumber, e
     const capitalizedDifficulty = difficulty.charAt(0).toUpperCase() + difficulty.slice(1).toLowerCase();
     const difficultyFilePath = `${capitalizedDifficulty}/${fileName}`;
 
-    // Format topic path (replace spaces with underscores and capitalize)
-    const formattedTopic = topic
-      .toLowerCase()
-      .replace(/ /g, '_') // Replace all spaces with underscores
-      .split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join('_');
-    const topicFilePath = `Topics/${formattedTopic}/${fileName}`;
-
     // Encode the code to base64
     const content = Buffer.from(code).toString('base64');
 
-    // Upload the file to the difficulty folder
+    // Upload to difficulty folder
     await uploadFile(difficultyFilePath, content, `Add ${fileName} solution under ${capitalizedDifficulty}`);
 
-    // Upload the file to the topic folder
-    await uploadFile(topicFilePath, content, `Add ${fileName} solution under ${formattedTopic}`);
+    // Upload to each topic folder
+    const topicPaths = await Promise.all(topics.map(async (topic) => {
+      const formattedTopic = topic
+        .toLowerCase()
+        .replace(/ /g, '_')
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join('_');
+      
+      const topicFilePath = `Topics/${formattedTopic}/${fileName}`;
+      await uploadFile(topicFilePath, content, `Add ${fileName} solution under ${formattedTopic}`);
+      return topicFilePath;
+    }));
 
-    return { success: true, filePaths: [difficultyFilePath, topicFilePath] };
+    return { 
+      success: true, 
+      filePaths: [difficultyFilePath, ...topicPaths] 
+    };
   } catch (error: unknown) {
     if (error instanceof Error) {
       console.error('GitHub upload error:', error.message);
@@ -102,10 +107,10 @@ async function uploadFile(filePath: string, content: string, message: string) {
 export async function POST(request: Request) {
   try {
     const data = await request.json();
-    const { code, difficulty, topic, name, leetcodeNumber, extension } = data;
+    const { code, difficulty, topics, name, leetcodeNumber, extension } = data;
 
     // Ensure all required fields are provided
-    if (!code || !difficulty || !topic || !name || !leetcodeNumber || !extension) {
+    if (!code || !difficulty || !topics?.length || !name || !leetcodeNumber || !extension) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -116,7 +121,7 @@ export async function POST(request: Request) {
     const result = await uploadToGitHub({
       code,
       difficulty,
-      topic,
+      topics,
       name,
       leetcodeNumber,
       extension,
