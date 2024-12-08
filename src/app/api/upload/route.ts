@@ -10,7 +10,7 @@ interface UploadData {
   extension: string;
 }
 
-const token = process.env.GITHUB_TOKEN; // Access environment variable // GitHub Authentication token
+ const token = process.env.GITHUB_TOKEN; // Access environment variable // GitHub Authentication token
 
 // Instantiate Octokit with authentication token
 const octokit = new Octokit({ auth: token });
@@ -70,36 +70,63 @@ async function uploadToGitHub({ code, difficulty, topics, name, leetcodeNumber, 
   }
 }
 
-// Helper function to upload a file
-async function uploadFile(filePath: string, content: string, message: string) {
-  // Check if the file already exists in the repository
-  const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
-    owner: REPO_OWNER,
-    repo: REPO_NAME,
-    path: filePath,
-  }).catch(() => null); // If file does not exist, we proceed to create it
+// Helper function to upload a file with retry mechanism
+async function uploadFile(filePath: string, content: string, message: string, retryCount = 3) {
+  for (let attempt = 1; attempt <= retryCount; attempt++) {
+    try {
+      // Get the latest file state
+      const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
+        owner: REPO_OWNER,
+        repo: REPO_NAME,
+        path: filePath,
+        headers: {
+          'X-GitHub-Api-Version': '2022-11-28',
+          'If-None-Match': '', // Force fresh data
+          'Cache-Control': 'no-cache'
+        }
+      }).catch(error => {
+        if (error.status === 404) {
+          return null; // File doesn't exist
+        }
+        throw error;
+      });
 
-  // If the file exists, update it; otherwise, create a new file
-  if (response?.data) {
-    const existingFile = response.data as FileContent;
-    // File exists, update it
-    await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
-      path: filePath,
-      message: `Update ${filePath} solution`,
-      content: content,
-      sha: existingFile.sha, // Required to update the file
-    });
-  } else {
-    // File does not exist, create it
-    await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
-      path: filePath,
-      message: message,
-      content: content,
-    });
+      const requestParams = {
+        owner: REPO_OWNER,
+        repo: REPO_NAME,
+        path: filePath,
+        message: message,
+        content: content,
+        headers: {
+          'X-GitHub-Api-Version': '2022-11-28'
+        }
+      };
+
+      if (response?.data) {
+        // File exists, get its latest SHA
+        const existingFile = response.data as FileContent;
+        await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
+          ...requestParams,
+          sha: existingFile.sha,
+        });
+      } else {
+        // File doesn't exist, create it
+        await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', requestParams);
+      }
+
+      // If we get here, the operation was successful
+      return;
+
+    } catch (error: any) {
+      if (error.status === 409 && attempt < retryCount) {
+        // SHA mismatch, wait a bit and retry
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        continue;
+      }
+      // If we've exhausted retries or it's a different error, throw it
+      console.error(`Error uploading file ${filePath} (attempt ${attempt}/${retryCount}):`, error);
+      throw error;
+    }
   }
 }
 
