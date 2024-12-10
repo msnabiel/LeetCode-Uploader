@@ -10,7 +10,7 @@ interface UploadData {
   extension: string;
 }
 
- const token = process.env.GITHUB_TOKEN; // Access environment variable // GitHub Authentication token
+ const token = process.env.GITHUB_TOKEN; // GitHub Authentication token
 
 // Instantiate Octokit with authentication token
 const octokit = new Octokit({ auth: token });
@@ -28,53 +28,39 @@ interface FileContent {
 
 // Function to upload the solution to GitHub
 async function uploadToGitHub({ code, difficulty, topics, name, leetcodeNumber, extension }: UploadData) {
-  try {
-    const fileName = `${leetcodeNumber}-${name}${extension}`;
+  const fileName = `${leetcodeNumber}-${name}${extension}`;
+  const capitalizedDifficulty = difficulty.charAt(0).toUpperCase() + difficulty.slice(1).toLowerCase();
+  const difficultyFilePath = `${capitalizedDifficulty}/${fileName}`;
+  const content = Buffer.from(code).toString('base64');
+
+  // Upload to difficulty folder
+  await uploadFile(difficultyFilePath, content, `Add ${fileName} solution under ${capitalizedDifficulty}`);
+
+  // Sequentially upload to each topic folder
+  const topicPaths: string[] = [];
+  for (const topic of topics) {
+    const formattedTopic = topic
+      .toLowerCase()
+      .replace(/ /g, '_')
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join('_');
     
-    // Capitalize first letter of difficulty and construct path
-    const capitalizedDifficulty = difficulty.charAt(0).toUpperCase() + difficulty.slice(1).toLowerCase();
-    const difficultyFilePath = `${capitalizedDifficulty}/${fileName}`;
-
-    // Encode the code to base64
-    const content = Buffer.from(code).toString('base64');
-
-    // Upload to difficulty folder
-    await uploadFile(difficultyFilePath, content, `Add ${fileName} solution under ${capitalizedDifficulty}`);
-
-    // Upload to each topic folder
-    const topicPaths = await Promise.all(topics.map(async (topic) => {
-      const formattedTopic = topic
-        .toLowerCase()
-        .replace(/ /g, '_')
-        .split('_')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join('_');
-      
-      const topicFilePath = `Topics/${formattedTopic}/${fileName}`;
-      await uploadFile(topicFilePath, content, `Add ${fileName} solution under ${formattedTopic}`);
-      return topicFilePath;
-    }));
-
-    return { 
-      success: true, 
-      filePaths: [difficultyFilePath, ...topicPaths] 
-    };
-  } catch (error: unknown) {
-    if (error instanceof Error) {
-      console.error('GitHub upload error:', error.message);
-      return { success: false, error: error.message };
-    } else {
-      console.error('Unknown error during GitHub upload');
-      return { success: false, error: 'Unknown error' };
-    }
+    const topicFilePath = `Topics/${formattedTopic}/${fileName}`;
+    await uploadFile(topicFilePath, content, `Add ${fileName} solution under ${formattedTopic}`);
+    topicPaths.push(topicFilePath);
   }
+
+  return { 
+    success: true, 
+    filePaths: [difficultyFilePath, ...topicPaths] 
+  };
 }
 
 // Helper function to upload a file with retry mechanism
 async function uploadFile(filePath: string, content: string, message: string, retryCount = 3) {
   for (let attempt = 1; attempt <= retryCount; attempt++) {
     try {
-      // Get the latest file state
       const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
         owner: REPO_OWNER,
         repo: REPO_NAME,
@@ -103,27 +89,22 @@ async function uploadFile(filePath: string, content: string, message: string, re
       };
 
       if (response?.data) {
-        // File exists, get its latest SHA
         const existingFile = response.data as FileContent;
         await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
           ...requestParams,
           sha: existingFile.sha,
         });
       } else {
-        // File doesn't exist, create it
         await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', requestParams);
       }
 
-      // If we get here, the operation was successful
       return;
 
-    } catch (error: any) {
-      if (error.status === 409 && attempt < retryCount) {
-        // SHA mismatch, wait a bit and retry
+    } catch (error) {
+      if (error instanceof Error && error.status === 409 && attempt < retryCount) {
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         continue;
       }
-      // If we've exhausted retries or it's a different error, throw it
       console.error(`Error uploading file ${filePath} (attempt ${attempt}/${retryCount}):`, error);
       throw error;
     }
