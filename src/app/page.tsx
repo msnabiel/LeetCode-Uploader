@@ -71,6 +71,7 @@ const LeetCodeUploadForm = () => {
         setCode('');
         setName('');
         setLeetCodeNumber('');
+        setTopics([]);
         setTimeout(() => {
           setSuccessMessage('');
         }, 5000);
@@ -193,10 +194,20 @@ const LeetCodeUploadForm = () => {
             <div className="space-y-2">
               <Label htmlFor="topic">Topics (Select multiple)</Label>
               <div className="grid grid-cols-2 gap-2 mt-2">
-                {["Arrays", "Strings", "Dynamic Programming", "Backtracking", "Bit Manipulation", 
-                  "Greedy", "Graphs", "Trees", "Math", "Hash Table", "Sorting", "Searching", 
-                  "Two_Pointers", "Sliding Window", "Union Find", "Heap", "Stack", "Queue", 
-                  "Recursion", "Binary Search", "Trie", "Divide and Conquer", "Monotonic_Stack"
+                {[
+                  "Array", "Backtracking", "Binary Indexed Tree", "Binary Search", "Binary Search Tree",
+                  "Bit Manipulation", "Bitmask", "Breadth-First Search", "Brainteaser", "Bucket Sort",
+                  "Combinatorics", "Concurrency", "Counting", "Counting Sort", "Data Stream", "Database",
+                  "Depth-First Search", "Design", "Divide and Conquer", "Doubly-Linked List",
+                  "Dynamic Programming", "Enumeration", "Geometry", "Graph", "Greedy", "Hash Function",
+                  "Hash Table", "Heap (Priority Queue)", "Interactive", "Iterator", "Line Sweep",
+                  "Linked List", "Math", "Matrix", "Memoization", "Merge Sort", "Minimum Spanning Tree",
+                  "Monotonic Queue", "Monotonic Stack", "Number Theory", "Ordered Set", "Prefix Sum",
+                  "Probability and Statistics", "Queue", "Quickselect", "Radix Sort", "Randomized",
+                  "Recursion", "Rejection Sampling", "Reservoir Sampling", "Rolling Hash", "Segment Tree",
+                  "Shell", "Shortest Path", "Simulation", "Sliding Window", "Sorting", "Stack",
+                  "Strongly Connected Component", "String", "String Matching", "Suffix Array",
+                  "Topological Sort", "Tree", "Trie", "Two Pointers", "Union Find"
                 ].map((topicValue) => (
                   <div
                     key={topicValue}
