@@ -10,7 +10,7 @@ interface UploadData {
   extension: string;
 }
 
-const token = process.env.GITHUB_TOKEN; // GitHub Authentication token
+const token = process.env.GITHUB_TOKEN;  // GitHub Authentication token
 
 // Instantiate Octokit with authentication token
 const octokit = new Octokit({ auth: token });
@@ -26,35 +26,45 @@ interface FileContent {
   path: string;
 }
 
+// Define a custom error type for Octokit errors
+interface OctokitError extends Error {
+  status?: number;
+}
+
 // Function to upload the solution to GitHub
 async function uploadToGitHub({ code, difficulty, topics, name, leetcodeNumber, extension }: UploadData) {
-  const fileName = `${leetcodeNumber}-${name}${extension}`;
-  const capitalizedDifficulty = difficulty.charAt(0).toUpperCase() + difficulty.slice(1).toLowerCase();
-  const difficultyFilePath = `${capitalizedDifficulty}/${fileName}`;
-  const content = Buffer.from(code).toString('base64');
+  try {
+    const fileName = `${leetcodeNumber}-${name}${extension}`;
+    const capitalizedDifficulty = difficulty.charAt(0).toUpperCase() + difficulty.slice(1).toLowerCase();
+    const difficultyFilePath = `${capitalizedDifficulty}/${fileName}`;
+    const content = Buffer.from(code).toString('base64');
 
-  // Upload to difficulty folder
-  await uploadFile(difficultyFilePath, content, `Add ${fileName} solution under ${capitalizedDifficulty}`);
+    // Upload to difficulty folder
+    await uploadFile(difficultyFilePath, content, `Add ${fileName} solution under ${capitalizedDifficulty}`);
 
-  // Sequentially upload to each topic folder
-  const topicPaths: string[] = [];
-  for (const topic of topics) {
-    const formattedTopic = topic
-      .toLowerCase()
-      .replace(/ /g, '_')
-      .split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join('_');
-    
-    const topicFilePath = `Topics/${formattedTopic}/${fileName}`;
-    await uploadFile(topicFilePath, content, `Add ${fileName} solution under ${formattedTopic}`);
-    topicPaths.push(topicFilePath);
+    // Sequentially upload to each topic folder
+    const topicPaths: string[] = [];
+    for (const topic of topics) {
+      const formattedTopic = topic
+        .toLowerCase()
+        .replace(/ /g, '_')
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join('_');
+      
+      const topicFilePath = `Topics/${formattedTopic}/${fileName}`;
+      await uploadFile(topicFilePath, content, `Add ${fileName} solution under ${formattedTopic}`);
+      topicPaths.push(topicFilePath);
+    }
+
+    return { 
+      success: true, 
+      filePaths: [difficultyFilePath, ...topicPaths] 
+    };
+  } catch (error) {
+    console.error('GitHub upload error:', error);
+    return { success: false, error: 'Error uploading solution to GitHub' };
   }
-
-  return { 
-    success: true, 
-    filePaths: [difficultyFilePath, ...topicPaths] 
-  };
 }
 
 // Helper function to upload a file with retry mechanism
@@ -70,7 +80,7 @@ async function uploadFile(filePath: string, content: string, message: string, re
           'If-None-Match': '', // Force fresh data
           'Cache-Control': 'no-cache'
         }
-      }).catch(error => {
+      }).catch((error: OctokitError) => {
         if (error.status === 404) {
           return null; // File doesn't exist
         }
@@ -101,7 +111,8 @@ async function uploadFile(filePath: string, content: string, message: string, re
       return;
 
     } catch (error) {
-      if (error instanceof Error && error.status === 409 && attempt < retryCount) {
+      const octokitError = error as OctokitError;
+      if (octokitError.status === 409 && attempt < retryCount) {
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         continue;
       }
