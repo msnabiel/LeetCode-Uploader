@@ -31,6 +31,16 @@ interface OctokitError extends Error {
   status?: number;
 }
 
+// Function to format path segments (consistent space handling)
+function formatPathSegment(segment: string): string {
+  return segment
+    .toLowerCase()
+    .replace(/ /g, '_')
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('_');
+}
+
 // Function to upload the solution to GitHub
 async function uploadToGitHub({ code, difficulty, topics, name, leetcodeNumber, extension }: UploadData) {
   try {
@@ -47,13 +57,7 @@ async function uploadToGitHub({ code, difficulty, topics, name, leetcodeNumber, 
     // Sequentially upload to each topic folder
     const topicPaths: string[] = [];
     for (const topic of topics) {
-      const formattedTopic = topic
-        .toLowerCase()
-        .replace(/ /g, '_')
-        .split('_')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join('_');
-      
+      const formattedTopic = formatPathSegment(topic);
       const topicFilePath = `Topics/${formattedTopic}/${fileName}`;
       await uploadFile(topicFilePath, content, `Add ${fileName} solution under ${formattedTopic}`);
       topicPaths.push(topicFilePath);
@@ -79,7 +83,8 @@ async function uploadFile(filePath: string, content: string, message: string, re
       
       // Iterate through path parts to ensure each directory level exists
       for (let i = 0; i < pathParts.length - 1; i++) {
-        currentPath += (currentPath ? '/' : '') + pathParts[i];
+        const pathSegment = formatPathSegment(pathParts[i]);
+        currentPath += (currentPath ? '/' : '') + pathSegment;
         try {
           await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
             owner: REPO_OWNER,
