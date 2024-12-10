@@ -10,7 +10,7 @@ interface UploadData {
   extension: string;
 }
 
-const token = process.env.GITHUB_TOKEN;  // GitHub Authentication token
+const token = process.env.GITHUB_TOKEN; // GitHub Authentication token
 
 // Instantiate Octokit with authentication token
 const octokit = new Octokit({ auth: token });
@@ -34,7 +34,9 @@ interface OctokitError extends Error {
 // Function to upload the solution to GitHub
 async function uploadToGitHub({ code, difficulty, topics, name, leetcodeNumber, extension }: UploadData) {
   try {
-    const fileName = `${leetcodeNumber}-${name}${extension}`;
+    // Replace spaces with hyphens in the problem name
+    const formattedName = name.trim().toLowerCase().replace(/ /g, '-');
+    const fileName = `${leetcodeNumber}-${formattedName}${extension}`;
     const capitalizedDifficulty = difficulty.charAt(0).toUpperCase() + difficulty.slice(1).toLowerCase();
     const difficultyFilePath = `${capitalizedDifficulty}/${fileName}`;
     const content = Buffer.from(code).toString('base64');
@@ -71,18 +73,47 @@ async function uploadToGitHub({ code, difficulty, topics, name, leetcodeNumber, 
 async function uploadFile(filePath: string, content: string, message: string, retryCount = 3) {
   for (let attempt = 1; attempt <= retryCount; attempt++) {
     try {
+      // First, try to create the directory structure if it doesn't exist
+      const pathParts = filePath.split('/');
+      let currentPath = '';
+      
+      // Iterate through path parts to ensure each directory level exists
+      for (let i = 0; i < pathParts.length - 1; i++) {
+        currentPath += (currentPath ? '/' : '') + pathParts[i];
+        try {
+          await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
+            owner: REPO_OWNER,
+            repo: REPO_NAME,
+            path: currentPath,
+          });
+        } catch (error) {
+          const octokitError = error as OctokitError;
+          if (octokitError.status === 404) {
+            // Directory doesn't exist, create it with a .gitkeep file
+            await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
+              owner: REPO_OWNER,
+              repo: REPO_NAME,
+              path: `${currentPath}/.gitkeep`,
+              message: `Create ${currentPath} directory`,
+              content: Buffer.from('').toString('base64'),
+            });
+          }
+        }
+      }
+
+      // Now proceed with file upload
       const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
         owner: REPO_OWNER,
         repo: REPO_NAME,
         path: filePath,
         headers: {
           'X-GitHub-Api-Version': '2022-11-28',
-          'If-None-Match': '', // Force fresh data
+          'If-None-Match': '',
           'Cache-Control': 'no-cache'
         }
       }).catch((error: OctokitError) => {
         if (error.status === 404) {
-          return null; // File doesn't exist
+          return null;
         }
         throw error;
       });
