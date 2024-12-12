@@ -39,23 +39,28 @@ interface OctokitError extends Error {
 function formatPathSegment(segment: string): string {
   return segment
     .trim()
-    .replace(/[^\w\s]/g, '')     // Remove special characters
-    .split(/\s+/)                // Split on whitespace
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join('_');
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '') // Only allow lowercase letters, numbers and spaces
+    .replace(/\s+/g, '_')        // Replace spaces with single underscore
+    .replace(/_+/g, '_');        // Replace multiple underscores with single underscore
+}
+
+// Function to format file names
+function formatFileName(name: string, number: string, extension: string): string {
+  const sanitizedName = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '') // Only allow lowercase letters, numbers, spaces, and hyphens
+    .replace(/\s+/g, '-')         // Replace spaces with single hyphen
+    .replace(/-+/g, '-');         // Replace multiple hyphens with single hyphen
+
+  return `${number}-${sanitizedName}${extension}`;
 }
 
 // Function to upload the solution to GitHub
 async function uploadToGitHub({ code, difficulty, topics, name, leetcodeNumber, extension }: UploadData) {
   try {
-    // Format the file name: remove special characters and replace spaces with hyphens
-    const formattedName = name
-      .trim()
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, '')  // Remove special characters except spaces and hyphens
-      .replace(/\s+/g, '-');     // Replace spaces with hyphens
-    
-    const fileName = `${leetcodeNumber}-${formattedName}${extension}`;
+    const fileName = formatFileName(name, leetcodeNumber, extension);
     const capitalizedDifficulty = difficulty.charAt(0).toUpperCase() + difficulty.slice(1).toLowerCase();
     const difficultyFilePath = `${capitalizedDifficulty}/${fileName}`;
     const content = Buffer.from(code).toString('base64');
@@ -66,7 +71,6 @@ async function uploadToGitHub({ code, difficulty, topics, name, leetcodeNumber, 
     // Sequentially upload to each topic folder
     const topicPaths: string[] = [];
     for (const topic of topics) {
-      // Format topic name: capitalize words and replace spaces with underscores
       const formattedTopic = formatPathSegment(topic);
       const topicFilePath = `Topics/${formattedTopic}/${fileName}`;
       await uploadFile(topicFilePath, content, `Add ${fileName} solution under ${formattedTopic}`);
