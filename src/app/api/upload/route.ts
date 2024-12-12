@@ -10,7 +10,11 @@ interface UploadData {
   extension: string;
 }
 
-const token = process.env.GITHUB_TOKEN;// GitHub Authentication token
+const token = process.env.GITHUB_TOKEN;
+
+if (!token) {
+  throw new Error('GITHUB_TOKEN is not defined in environment variables');
+}
 
 // Instantiate Octokit with authentication token
 const octokit = new Octokit({ auth: token });
@@ -34,18 +38,23 @@ interface OctokitError extends Error {
 // Function to format path segments (consistent space handling)
 function formatPathSegment(segment: string): string {
   return segment
-    .toLowerCase()
-    .replace(/ /g, '_')
-    .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .trim()
+    .replace(/[^\w\s]/g, '')     // Remove special characters
+    .split(/\s+/)                // Split on whitespace
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join('_');
 }
 
 // Function to upload the solution to GitHub
 async function uploadToGitHub({ code, difficulty, topics, name, leetcodeNumber, extension }: UploadData) {
   try {
-    // Replace spaces with hyphens in the problem name
-    const formattedName = name.trim().toLowerCase().replace(/ /g, '-');
+    // Format the file name: remove special characters and replace spaces with hyphens
+    const formattedName = name
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '')  // Remove special characters except spaces and hyphens
+      .replace(/\s+/g, '-');     // Replace spaces with hyphens
+    
     const fileName = `${leetcodeNumber}-${formattedName}${extension}`;
     const capitalizedDifficulty = difficulty.charAt(0).toUpperCase() + difficulty.slice(1).toLowerCase();
     const difficultyFilePath = `${capitalizedDifficulty}/${fileName}`;
@@ -57,6 +66,7 @@ async function uploadToGitHub({ code, difficulty, topics, name, leetcodeNumber, 
     // Sequentially upload to each topic folder
     const topicPaths: string[] = [];
     for (const topic of topics) {
+      // Format topic name: capitalize words and replace spaces with underscores
       const formattedTopic = formatPathSegment(topic);
       const topicFilePath = `Topics/${formattedTopic}/${fileName}`;
       await uploadFile(topicFilePath, content, `Add ${fileName} solution under ${formattedTopic}`);
@@ -161,10 +171,17 @@ async function uploadFile(filePath: string, content: string, message: string, re
 // API route handler for App Router
 export async function POST(request: Request) {
   try {
+    if (!process.env.GITHUB_TOKEN) {
+      return NextResponse.json(
+        { error: 'GitHub token not configured' },
+        { status: 500 }
+      );
+    }
+
     const data = await request.json();
     const { code, difficulty, topics, name, leetcodeNumber, extension } = data;
 
-    // Ensure all required fields are provided
+    // Validate input
     if (!code || !difficulty || !topics?.length || !name || !leetcodeNumber || !extension) {
       return NextResponse.json(
         { error: 'Missing required fields' },
@@ -172,7 +189,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Call the function to upload the solution to GitHub
+    // Additional validation for file name characters
+    if (!/^[\w\-\s]+$/.test(name)) {
+      return NextResponse.json(
+        { error: 'Problem name contains invalid characters' },
+        { status: 400 }
+      );
+    }
+
     const result = await uploadToGitHub({
       code,
       difficulty,
@@ -182,7 +206,6 @@ export async function POST(request: Request) {
       extension,
     });
 
-    // Check if result contains filePaths and return the appropriate response
     if (result.success && result.filePaths) {
       return NextResponse.json({
         message: `Solution uploaded successfully to ${result.filePaths.join(', ')}`
