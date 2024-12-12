@@ -33,16 +33,21 @@ interface FileContent {
 // Define a custom error type for Octokit errors
 interface OctokitError extends Error {
   status?: number;
+  response?: {
+    data: any;
+  };
 }
 
-// Function to format path segments (consistent space handling)
+// Function to format path segments (capitalize first letter of each word)
 function formatPathSegment(segment: string): string {
   return segment
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '') // Only allow lowercase letters, numbers and spaces
-    .replace(/\s+/g, '_')        // Replace spaces with single underscore
-    .replace(/_+/g, '_');        // Replace multiple underscores with single underscore
+    .replace(/[^a-z0-9\s]/g, '') // Only allow lowercase letters, numbers, and spaces
+    .replace(/\s+/g, ' ')        // Replace multiple spaces with single space
+    .split(' ')                   // Split into words
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1)) // Capitalize first letter
+    .join('_');                   // Join with underscores
 }
 
 // Function to format file names
@@ -94,7 +99,7 @@ async function uploadFile(filePath: string, content: string, message: string, re
       // First, try to create the directory structure if it doesn't exist
       const pathParts = filePath.split('/');
       let currentPath = '';
-      
+
       // Iterate through path parts to ensure each directory level exists
       for (let i = 0; i < pathParts.length - 1; i++) {
         const pathSegment = formatPathSegment(pathParts[i]);
@@ -116,6 +121,9 @@ async function uploadFile(filePath: string, content: string, message: string, re
               message: `Create ${currentPath} directory`,
               content: Buffer.from('').toString('base64'),
             });
+          } else {
+            console.error(`Error checking directory ${currentPath}:`, octokitError);
+            throw octokitError;
           }
         }
       }
@@ -137,7 +145,7 @@ async function uploadFile(filePath: string, content: string, message: string, re
         throw error;
       });
 
-      const requestParams = {
+      const requestParams: any = {
         owner: REPO_OWNER,
         repo: REPO_NAME,
         path: filePath,
@@ -150,10 +158,8 @@ async function uploadFile(filePath: string, content: string, message: string, re
 
       if (response?.data) {
         const existingFile = response.data as FileContent;
-        await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
-          ...requestParams,
-          sha: existingFile.sha,
-        });
+        requestParams.sha = existingFile.sha;
+        await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', requestParams);
       } else {
         await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', requestParams);
       }
@@ -162,13 +168,54 @@ async function uploadFile(filePath: string, content: string, message: string, re
 
     } catch (error) {
       const octokitError = error as OctokitError;
-      if (octokitError.status === 409 && attempt < retryCount) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      console.error('Detailed error:', {
+        status: octokitError.status,
+        message: octokitError.message,
+        path: filePath,
+        attempt: attempt
+      });
+
+      if (octokitError.status === 409 && attempt < retryCount) { // 409 Conflict
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
         continue;
       }
-      console.error(`Error uploading file ${filePath} (attempt ${attempt}/${retryCount}):`, error);
+
       throw error;
     }
+  }
+}
+
+// Add this function for testing GitHub access
+async function testGitHubAccess() {
+  try {
+    await octokit.request('PUT /repos/{owner}/{repo}/contents/{path}', {
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      path: 'test.txt',
+      message: 'Test file creation',
+      content: Buffer.from('test content').toString('base64'),
+    });
+    console.log('Test file created successfully');
+    // Clean up the test file by deleting it
+    const testFileResponse = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      path: 'test.txt',
+    });
+
+    const testFileSha = testFileResponse.data.sha;
+    await octokit.request('DELETE /repos/{owner}/{repo}/contents/{path}', {
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      path: 'test.txt',
+      message: 'Delete test file',
+      sha: testFileSha,
+    });
+    console.log('Test file deleted successfully');
+    return true;
+  } catch (error) {
+    console.error('GitHub access test failed:', error);
+    return false;
   }
 }
 
@@ -178,6 +225,15 @@ export async function POST(request: Request) {
     if (!process.env.GITHUB_TOKEN) {
       return NextResponse.json(
         { error: 'GitHub token not configured' },
+        { status: 500 }
+      );
+    }
+
+    // Test GitHub access first
+    const accessTest = await testGitHubAccess();
+    if (!accessTest) {
+      return NextResponse.json(
+        { error: 'Failed to access GitHub repository. Check token permissions.' },
         { status: 500 }
       );
     }
